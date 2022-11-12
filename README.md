@@ -463,3 +463,112 @@ async update() {
 }
 ```
 ### 频道订阅
+1. 订阅频道(用户)
+2. 取消订阅频道(用户)
+3. 获取用户(频道)
+
+#### 订阅接口
+```js
+// router.js
+router.post('/users/:userId/subscribe',auth, controller.user.subscribe);
+```
+#### 接口设计
+1. 用户不能订阅自己
+2. 添加订阅
+3. 发送响应
+#### 订阅的service
+1. 检查是否已经订阅
+2. 没有订阅,添加
+3. 返回用户信息
+```js
+// 添加订阅
+async subscribe(userId, channelId) {
+  const { Subscription, User } = this.app.model;
+  // 1. 检查是否已经订阅
+  const record = await Subscription.findOne({
+    user: userId,
+    channel: channelId,
+  });
+
+  const user = await User.findById(channelId);
+  // 2. 没有订阅,添加
+  if (!record) {
+    await new Subscription({
+      user: userId,
+      channel: channelId,
+    }).save();
+    // 更新用户订阅数量
+    user.subscribersCount++;
+    await user.save(); // 更新到数据库
+  }
+  // 3. 返回用户信息
+  return user;
+}
+```
+#### 订阅的Controller
+```js
+// 订阅频道
+async subscribe() {
+  const userId = this.ctx.user._id; // 用户id
+  const channelId = this.ctx.params.userId; // 频道id
+  // 1. 用户不能订阅自己
+  // equals(mongoose 内置方法，专用于比对 object._id,内部原理等同于转换字符串比较)
+  if (userId.equals(channelId)) {
+    this.ctx.throw(422, '用户不能订阅自己');
+  }
+  // 2. 添加订阅
+  const user = await this.service.user.subscribe(userId, channelId);
+  // 3. 发送响应
+  this.ctx.body = {
+    ...user.toJSON(),
+    isSubscribed: true,
+  };
+}
+```
+### 安装lodash
+使用其中的`pick`方法,为了给前端参数的时候,可以更方便的提供出对应的参数.
+```sh
+pnpm add lodash
+```
+挂载全局
+```js
+//extend/helper.js
+const _ = require("lodash")
+
+exports._ = _
+```
+修改返回响应体
+```js
+this.ctx.body = {
+  ...this.ctx.helper._.pick(user, [
+    'username',
+    'email',
+    'avatar',
+    'cover',
+    'channelDescription',
+    'subscribersCount',
+  ]),
+  isSubscribed: true,
+}
+```
+### 取消订阅频道(用户)
+#### 接口设计
+```js
+// router.js
+router.delete('/users/:userId/subscribe', auth, controller.user.unsubscribe);
+```
+### service和Controller设计
+取消订阅和订阅的方法基本没什么变化,需要变化的有下面几处.
+```js
+// Controller/user.js
+isSubscribed: false,
+
+//service/user.js
+// 2. 有订阅,删除
+if (record) {
+  await record.remove();
+  // 更新用户订阅数量
+  user.subscribersCount--;
+  await user.save(); // 更新到数据库
+}
+```

@@ -130,6 +130,54 @@ class UserController extends Controller {
       },
     };
   }
+
+  // 订阅频道
+  async subscribe() {
+    const userId = this.ctx.user._id; // 用户id
+    const channelId = this.ctx.params.userId; // 频道id
+    // 1. 用户不能订阅自己
+    // equals(mongoose 内置方法，专用于比对 object._id,内部原理等同于转换字符串比较)
+    if (userId.equals(channelId)) {
+      this.ctx.throw(422, '用户不能订阅自己');
+    }
+    // 2. 添加订阅
+    const user = await this.service.user.subscribe(userId, channelId);
+    // 3. 发送响应
+    this.ctx.body = {
+      ...this.ctx.helper._.pick(user, [
+        'username',
+        'email',
+        'avatar',
+        'cover',
+        'channelDescription',
+        'subscribersCount',
+      ]),
+      isSubscribed: true,
+    };
+  }
+  // 取消订阅频道
+  async unsubscribe() {
+    const userId = this.ctx.user._id; // 用户id
+    const channelId = this.ctx.params.userId; // 频道id
+    // 1. 用户不能订阅自己
+    if (userId.equals(channelId)) {
+      this.ctx.throw(422, '用户不能订阅自己');
+    }
+    // 2. 取消订阅
+    const user = await this.service.user.unsubscribe(userId, channelId);
+    // 3. 发送响应
+    this.ctx.body = {
+      ...this.ctx.helper._.pick(user, [
+        'username',
+        'email',
+        'avatar',
+        'cover',
+        'channelDescription',
+        'subscribersCount',
+      ]),
+      isSubscribed: false,
+    };
+  }
 }
 
 module.exports = UserController;

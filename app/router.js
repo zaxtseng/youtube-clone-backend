@@ -12,4 +12,7 @@ module.exports = app => {
   router.post('/users/login', controller.user.login);
   router.get('/user', auth, controller.user.getCurrentUser);
   router.patch('/user', auth, controller.user.update);
+  // 用户订阅
+  router.post('/users/:userId/subscribe', auth, controller.user.subscribe);
+  router.delete('/users/:userId/subscribe', auth, controller.user.unsubscribe);
 };
