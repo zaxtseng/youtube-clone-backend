@@ -16,7 +16,7 @@ module.exports = appInfo => {
   config.keys = appInfo.name + '_1668151389872_9511';
 
   // add your middleware config here
-  config.middleware = [];
+  config.middleware = [ 'errorHandler' ];
 
   // add your user config here
   const userConfig = {
@@ -34,7 +34,13 @@ module.exports = appInfo => {
       plugins: [],
     },
   };
-
+  /**
+   * 配置jwt
+   */
+  config.jwt = {
+    secret: '8968db1c-be91-42cd-aec7-1da118348f3b',
+    expiresIn: '1d', // 1d是1天
+  };
   /**
    * 暂时关闭csrf
    */

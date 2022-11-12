@@ -143,3 +143,323 @@ class UserController extends Controller {
 
 module.exports = UserController;
 ```
+### 数据流程
+1. 数据校验
+2. 保存用户
+3. 生成token
+4. 发送响应
+
+### 数据校验
+使用插件`egg-validate`.通过`ctx.validate(rule, [body])`.
+```bash
+pnpm add egg-validate
+```
+```js
+//config/plugin.js
+exports.validate = {
+  enable: true,
+  package: 'egg-validate'
+}
+```
+### 统一异常处理(中间件)
+新建`middleware/error_handler.js`,
+```js
+// app/middleware/error_handler.js
+module.exports = () => {
+  return async function errorHandler(ctx, next) {
+    try {
+      await next();
+    } catch (err) {
+      // 所有的异常都在 app 上触发一个 error 事件，框架会记录一条错误日志
+      ctx.app.emit('error', err, ctx);
+
+      const status = err.status || 500;
+      // 生产环境时 500 错误的详细错误内容不返回给客户端，因为可能包含敏感信息
+      const error =
+        status === 500 && ctx.app.config.env === 'prod'
+          ? 'Internal Server Error'
+          : err.message;
+
+      // 从 error 对象上读出各个属性，设置到响应中
+      ctx.body = { error };
+      if (status === 422) {
+        ctx.body.detail = err.errors;
+      }
+      ctx.status = status;
+    }
+  };
+};
+```
+```js
+// app/config/config.default.js
+config.middleware = ['errorHandler']
+```
+### 封装业务方法
+新建`app/service`.
+```js
+// app/service/user.js
+const Service = require('egg').Service;
+
+class UserService extends Service {
+  get User() {
+    return this.app.model.User;
+  }
+
+  findByUsername(username) {
+    return this.User.findOne({
+      username,
+    });
+  }
+  findByEmail(email) {
+    return this.User.findOne({
+      email,
+    });
+  }
+
+  createUser() {}
+}
+
+module.exports = UserService;
+```
+### 添加存在验证
+```js
+// app/controller/user.js
+if (await this.service.user.findByUsername(body.username)) {
+    // username已存在
+    this.ctx.throw(422, '用户已存在');
+  }
+  if (await this.service.user.findByEmail(body.email)) {
+    // username已存在
+    this.ctx.throw(422, '邮箱已存在');
+  }
+```
+### 添加方法加密
+新建`app/extend/helper.js`
+```js
+const crypto = require('crypto');
+
+exports.md5 = str => {
+  return crypto.createHash('md5').update(str).digest('hex');
+};
+// 第二种写法
+// module.exports = {
+//   md5(str) {
+//     return crypto.createHash('md5').update(str).digest('hex');
+//   },
+// };
+```
+### 封装用户信息
+```js
+//app/service/user.js
+async createUser(data) {
+  data.password = this.ctx.helper.md5(data.password);
+  const user = new this.User(data);
+  // 保存到数据库中
+  await user.save();
+  return user;
+}
+```
+### 添加token
+`pnpm add jsonwebtoken`
+#### 配置jwt
+```js
+//config/config.default.js
+config.jwt = {
+  // 这里使用vscode插件uuid generator,使用ctrl+P,调用uuid,自动生成
+  secret: 'xxxx',
+  expiresIn: '1d', // 1d是1天
+}
+```
+```js
+// app/service/user.js
+createToken(data) {
+  jwt.sign(data, this.app.config.jwt.secret, {
+    expiresIn: this.app.config.jwt.expiresIn,
+  });
+}
+```
+
+```js
+// 生成token
+const token = await this.service.user.createToken({
+  userId: user._id,
+});
+```
+### 用户登录
+1. 基本数据验证
+2. 校验邮箱
+3. 校验密码
+4. 生成token
+5. 发送响应数据
+#### 增加路由
+```js
+// router.js
+router.post('/users/login', controller.user.login)
+```
+#### 用户登录
+```js
+async login() {
+  // 1. 基本数据验证
+  const body = this.ctx.request.body;
+  this.ctx.validate({
+    email: { type: 'email' },
+    password: { type: 'string' },
+  }, body);
+```
+#### 校验邮箱
+```js
+const userService = this.service.user;
+const user = await userService.findByEmail(body.email);
+
+if (!user) {
+  this.ctx.throw(422, '用户不存在');
+}
+```
+#### 校验密码
+注意: 因为在Schema中设置了`select: false, // 查询中不包含该字段`,
+所以查询的时候需要加上`select('+password')`才能查到密码.
+### 获取当前登录用户
+接口设计: GET请求
+
+所需参数: header中的 `Authorization` 字段,即token.
+
+返回参数: user中相关字段.
+
+步骤:
+1. 验证token
+2. 获取用户
+3. 发送响应
+#### 添加路由
+```js
+// router.js
+router.get('/user', controller.user.getCurrentUser);
+```
+#### controller中添加getCurrentUser方法
+```js
+async getCurrentUser() {
+  // 1. 验证token
+  // 2. 获取用户
+  // 3. 发送响应
+  const user = this.ctx.user;
+  this.ctx.body = {
+    user: {
+      email: user.email,
+      username: user.username,
+      token: this.ctx.headers.authorization,
+      avatar: user.avatar,
+      channelDescription: user.channelDescription,
+    },
+  };
+}
+```
+
+#### 中间件(身份认证)
+因为很多地方需要身份认证,所以封装到中间件中,统一处理.
+
+基本步骤:   
+1. 获取请求头中的 token
+2. 验证token, 无效返回 401
+3. token有效根据userId 获取用户数据挂载到ctx给后续中间件使用
+4. next 执行后续中间件
+```js
+// middleware/auth.js
+module.exports = () => {
+  return async (ctx, next) => {
+    // 1. 获取请求头中的 token
+    let token = ctx.headers.Authorization;
+    token = token ? token.split('Bearer ')[1] : null;
+    // 2. 验证token, 无效返回 401
+    if (!token) {
+      ctx.throw(401);
+    }
+    try {
+      // 3. token有效根据userId 获取用户数据挂载到ctx给后续中间件使用
+      const data = ctx.service.verityToken(token);
+      // 根据模型方法查询user信息
+      ctx.user = await ctx.model.User.findById(data.userId);
+    } catch (error) {
+      ctx.throw(401);
+    }
+    // 4. next 执行后续中间件
+    await next();
+  };
+};
+```
+验证token的方法成功会解析出数据,失败会抛出错误,使用try/catch捕获.
+```js
+// app/service/user.js
+// 验证token
+verifyToken(token) {
+  return jwt.verify(token, this.app.config.jwt.secret);
+}
+```
+按需加载这个中间件
+```js
+// router.js
+const auth = app.middleware.auth()
+
+router.get('/user', auth, controller.user.getCurrentUser);
+```
+### 更新用户信息
+步骤
+1. 基本数据验证
+2. 校验用户,邮箱是否已存在
+3. 更新用户信息
+4. 返回更新后的信息
+
+添加路由
+```js
+//  router.js
+router.patch('/user', auth, controller.user.update);
+```
+更新数据库用户信息
+```js
+//service.js
+// 更新用户信息
+updateUser(data) {
+  return this.User.findByIdAndUpdate(this.ctx.user._id, data, {
+    new: true, // 返回更新之后的数据
+  });
+}
+```
+```js
+// controller/user.js
+// 更新用户信息
+async update() {
+// 1. 基本数据验证
+  const { body } = this.ctx.request;
+
+  this.ctx.validate({
+    username: { type: 'string', required: false },
+    email: { type: 'email', required: false },
+    password: { type: 'string', required: false },
+    avatar: { type: 'string', required: false },
+    channelDescription: { type: 'string', required: false },
+  }, body);
+  // 2. 校验用户,邮箱是否已存在
+  const userService = this.service.user;
+  if (body.username) {
+    if (body.username !== this.ctx.user.username && await userService.findByUsername(body.user.username)) {
+      this.ctx.throw(422, '用户名已存在');
+    }
+  }
+  if (body.email) {
+    if (body.email !== this.ctx.user.mail && await userService.findByEmail(body.mail)) {
+      this.ctx.throw(422, '用户名已存在');
+    }
+  }
+  // 3. 更新用户信息
+  const user = await userService.updateUser(body);
+  // 4. 返回更新后的信息
+  this.ctx.body = {
+    user: {
+      email: user.email,
+      username: user.username,
+      password: user.password,
+      avatar: user.avatar,
+      channelDescription: user.channelDescription,
+    },
+  };
+}
+```
+### 频道订阅
