@@ -178,6 +178,56 @@ class UserController extends Controller {
       isSubscribed: false,
     };
   }
+
+  // 获取频道用户信息
+  async getUser() {
+    // 1. 获取订阅状态
+    let isSubscribed = false;
+    // 如果有登录状态,就获取记录,没有的话,应该是获取其他人的
+    if (this.ctx.user) {
+      // 获取订阅记录
+      const record = await this.app.model.Subscription.findOne({
+        user: this.ctx.user._id,
+        channel: this.ctx.params.userId,
+      });
+      if (record) {
+        isSubscribed = true;
+      }
+    }
+    // 2. 获取用户信息
+    const user = await this.app.model.User.findById(this.ctx.params.userId);
+    // 3. 发送响应
+    this.ctx.body = {
+      ...this.ctx.helper._.pick(user, [
+        'username',
+        'email',
+        'avatar',
+        'cover',
+        'channelDescription',
+        'subscribersCount',
+      ]),
+      isSubscribed,
+    };
+  }
+
+  // 获取用户的订阅列表
+  async getSubscriptions() {
+    // 查数据
+    const Subscription = this.app.model.Subscription;
+    let subscriptions = await Subscription.find({
+      user: this.ctx.params.userId,
+    }).populate('channel');
+    subscriptions = subscriptions.map(item => {
+      return this.ctx.helper._.pick(item.channel, [
+        '_id',
+        'username',
+        'avatar',
+      ]);
+    });
+    this.ctx.body = {
+      subscriptions,
+    };
+  }
 }
 
 module.exports = UserController;

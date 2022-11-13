@@ -572,3 +572,97 @@ if (record) {
   await user.save(); // 更新到数据库
 }
 ```
+### 获取频道用户信息
+#### 接口设计
+```js
+// router.js
+router.get('/users/:userId', auth, controller.user.getUser);
+```
+#### Controller
+1. 获取订阅状态
+2. 获取用户信息
+3. 发送响应
+```js
+// 获取用户信息
+async getUser() {
+  // 1. 获取订阅状态
+  let isSubscribed = false;
+  // 如果有登录状态,就获取记录,没有的话,应该是获取其他人的
+  if (this.ctx.user) {
+    // 获取订阅记录
+    const record = await this.app.model.Subscription.findOne({
+      user: this.ctx.user._id,
+      channel: this.ctx.params.userId,,
+    });
+    if (record) {
+      isSubscribed = true;
+    }
+  }
+  // 2. 获取用户信息
+  const user = await this.app.model.User.findById(this.ctx.params.userId);
+  // 3. 发送响应
+  this.ctx.body = {
+    ...this.ctx.helper._.pick(user, [
+      'username',
+      'email',
+      'avatar',
+      'cover',
+      'channelDescription',
+      'subscribersCount',
+    ]),
+    isSubscribed,
+  };
+}
+```
+#### 修改中间件auth
+```js
+module.exports = (options = { required: true }) => {
+  return async (ctx, next) => {
+    // 1. 获取请求头中的 token
+    let token = ctx.headers.authorization;
+    token = token ? token.split('Bearer ')[1] : null;
+    // 2. 验证token, 无效返回 401
+    if (token) {
+      try {
+        // 3. token有效根据userId 获取用户数据挂载到ctx给后续中间件使用
+        const data = ctx.service.user.verifyToken(token);
+        // 根据模型方法查询user信息
+        ctx.user = await ctx.model.User.findById(data.userId);
+      } catch (error) {
+        ctx.throw(401);
+      }
+    } else if (options.required) {
+      ctx.throw(401);
+    }
+    // 4. next 执行后续中间件
+    await next();
+  };
+};
+```
+### 获取用户的订阅列表
+```js
+// router.js
+router.get('/users/:userId/subscriptions', controller.user.getSubscriptions);
+};
+```
+#### controller
+```js
+// 获取用户的订阅列表
+async getSubscriptions() {
+  // 查数据
+  const Subscription = this.app.model.Subscription;
+  let subscriptions = await Subscription.find({
+    user: this.ctx.params.userId,
+  }).populate('channel');
+  subscriptions = subscriptions.map(item => {
+    return this.ctx.helper._.pick(item.channel, [
+      '_id',
+      'username',
+      'avatar',
+    ]);
+  });
+  this.ctx.body = {
+    subscriptions,
+  };
+}
+```
