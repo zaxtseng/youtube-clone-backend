@@ -17,7 +17,7 @@ module.exports = app => {
     },
     cover: { // 视频封面
       type: String,
-      required: true,
+      required: false,
     },
     user: {
       type: mongoose.ObjectId, // 视频作者
@@ -50,5 +50,5 @@ module.exports = app => {
     },
   });
 
-  return mongoose.model('Video', videoSchema)
+  return mongoose.model('Video', videoSchema);
 };

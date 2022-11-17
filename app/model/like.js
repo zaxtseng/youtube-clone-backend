@@ -29,5 +29,5 @@ module.exports = app => {
   });
 
 
-  return mongoose.model('VideoLike', likeSchema);
+  return mongoose.model('Like', likeSchema);
 };

@@ -666,3 +666,197 @@ async getSubscriptions() {
   };
 }
 ```
+## VOD视频点播平台
+本来教程是阿里云vod为基础的,但是之前的9.9体验包已经没有了,遂看到腾讯云vod有双十一活动,1元体验包一年,真香啊~
+### 权限
+阿里云的访问权限限制(就是小号),叫RAM用户.腾讯云的叫子账号.其实都是一个东西.当你想访问access key的时候就会提醒你创建子账号保护大号了.
+#### 上传凭证(上传签名)
+
+### 服务端上传SDK
+教程里用的也是阿里云的服务端SDK,那么我就用腾讯云的服务端SDK.
+```bash
+pnpm add vod-node-sdk
+```
+#### 初始化
+```js
+
+const { VodUploadClient, VodUploadRequest } = require('vod-node-sdk');
+
+client = new VodUploadClient("your secretId", "your secretKey");
+```
+#### 新建Controller
+```js
+// router.js
+router.get('/vod/createUploadVideo', auth, controller.user.createUploadVideo);
+```
+不知道为什么`this.ctx.body` 在赋值后没有正常输出.估计是egg内部的关于上下文的问题. 只能修改腾讯vod依赖中关于`upload`的方法,加上`return`返回.不然没法用`await`.
+```js
+// Controller/vod.js
+class VodController extends Controller {
+  async createUploadVideo() {
+    const query = this.ctx.query;
+    this.ctx.validate({
+      Title: { type: 'string' },
+      FileName: { type: 'string' },
+    }, query);
+
+    const client = new VodUploadClient('xxx', 'xxx');
+    const req = new VodUploadRequest();
+
+    req.MediaFilePath = `data/file/${query.FileName}`;
+    req.MediaName = `data/file/${query.Title}`;
+
+    const data = await client.upload('ap-guangzhou', req, function(err, data) {
+      if (err) {
+        // 处理业务异常
+        console.log(err);
+      } else {
+        // 获取上传成功后的信息
+        console.log(data.FileId);
+        console.log(data.MediaUrl);
+        return data;
+      }
+    });
+    // console.log('data: ', data);
+    this.ctx.body = { data };
+    // console.log('this.ctx: ', this.ctx.body);
+    // client.upload('ap-guangzhou', req, (err, data) => {
+    //   if (err) {
+    //     // 处理业务异常
+    //     console.log(err);
+    //   } else {
+    //     // 获取上传成功后的信息
+    //     console.log(data.FileId);
+    //     console.log(data.MediaUrl);
+    //     console.log('this.ctx: ', this.ctx.body);
+    //     this.ctx.body = { data };
+    //     console.log('this.ctx.BODY: ', this.ctx.body);
+    //   }
+    // });
+  }
+}
+```
+### 添加cors跨域处理
+```sh
+pnpm add egg-cors
+```
+#### 配置cors
+```js
+// plugin.js
+exports.cors = {
+  enable: 'true',
+  package: 'egg-cors',
+};
+```
+```js
+// config.default.js
+  // 设置跨域请求
+  config.cors = {
+    // 默认所有的地址都可以跨域请求
+    origin: '*',
+    // {string|Function} origin: '*',
+    // {string|Array} allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH'
+  };
+  ```
+### 视频刷新
+腾讯vod的服务端SDK没有设置这方面的方法,不写.
+### 程序扩展与懒加载
+新建`extend/application.js`.
+和腾讯vod方法不同还是不用了.
+### 生产环境配置
+本地开发配置文件: `config.local.js`    
+生产环境配置文件: `config.prod.js`
+```js
+// config.prod.js
+exports.vod = {
+  accessKeyId: process.env.accessKeyId,
+  accessKeySecret: process.env.accessKeySecret,
+};
+```
+```js
+// config.local.js
+const secret = require('./secret');
+exports.vod = {
+  ...secret.vod
+};
+```
+### 添加secret文件放置隐私信息
+本地开发会将这两个合并
+```js
+// secret.js
+exports.vod = {
+  accessKeyId: 'xxxx',
+  accessKeySecret: 'xxxx',
+};
+```
+### 创建视频接口
+增加路由
+```js
+// router.js
+router.post('/videos', auth, controller.video.createVideo);// 创建视频
+router.get('/videos/:videoId', app.middleware.auth({ required: false }), controller.video.createVideo);// 获取视频详情
+```
+### 创建VideoController
+```js
+// controller/video.js
+const { Controller } = require('egg');
+
+class VideoController extends Controller {
+  async createVideo() {
+    const body = this.ctx.request.body;
+    const { Video } = this.app.model;
+    // 校验数据
+    this.ctx.validate({
+      title: { type: 'string' },
+      description: { type: 'string' },
+      vodVideoId: { type: 'string' },
+    }, body);
+    body.user = this.ctx.user._id;
+    const video = await new Video(body).save();
+    this.ctx.status = 201;
+    this.ctx.body = {
+      video,
+    };
+  }
+
+  // 获取视频信息
+  async getVideo() {
+    const { Video, Like, Subscription } = this.app.model;
+    const { videoId } = this.ctx.params;
+    let video = await Video.findById(videoId).populate('user', '_id username avatar subscribersCount');
+
+    if (!video) {
+      this.ctx.throw(404, 'Video Not Found');
+    }
+    // 将video转成json
+    video = video.toJSON();
+    video.isLiked = false; // 是否喜欢
+    video.isDisliked = false; // 是否不喜欢
+    video.user.isSubscribed = false; // 是否已订阅视频作者
+
+    if (this.ctx.user) {
+      const userId = this.ctx.user._id;
+      if (await Like.findOne({ user: userId, video: videoId, like: 1 })) {
+        video.isLiked = true;
+      }
+      if (await Like.findOne({ user: userId, video: videoId, like: -1 })) {
+        video.isDisliked = true;
+      }
+      if (await Subscription.findOne({ user: userId, channel: video.user._id })) {
+        video.user.isSubscribed = true;
+      }
+    }
+    this.ctx.body = { video };
+  }
+}
+
+module.exports = VideoController;
+```
+
+## 注意
+Model层的命名,必须文件名和Model层名一致.
+#### 新建视频列表接口
+```js
+// router.js
+router.get('/videos', controller.video.getVideos)
+```

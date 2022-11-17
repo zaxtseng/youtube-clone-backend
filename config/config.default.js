@@ -39,7 +39,7 @@ module.exports = appInfo => {
    */
   config.jwt = {
     secret: '8968db1c-be91-42cd-aec7-1da118348f3b',
-    expiresIn: '1d', // 1d是1天
+    expiresIn: '11d', // 1d是1天
   };
   /**
    * 暂时关闭csrf
@@ -51,12 +51,12 @@ module.exports = appInfo => {
     },
   };
   // 设置跨域请求
-  // config.cors = {
-  //   // 默认所有的地址都可以跨域请求
-  //   origin: '*',
-  //   // {string|Function} origin: '*',
-  //   // {string|Array} allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH'
-  // };
+  config.cors = {
+    // 默认所有的地址都可以跨域请求
+    origin: '*',
+    // {string|Function} origin: '*',
+    // {string|Array} allowMethods: 'GET,HEAD,PUT,POST,DELETE,PATCH'
+  };
 
   return {
     ...config,

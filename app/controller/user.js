@@ -1,4 +1,4 @@
-const Controller = require('egg').Controller;
+const { Controller } = require('egg');
 
 class UserController extends Controller {
   // 用户创建
