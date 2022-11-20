@@ -11,7 +11,7 @@ COPY package.json /egg/package.json
 # 安装依赖
 RUN npm config set register https://registry.npm.taobao.org
 # 只安装dependencies的包
-RUN npm --production
+RUN npm i --production
 # 再copy代码至容器
 COPY ./ /egg
 # 7001端口
