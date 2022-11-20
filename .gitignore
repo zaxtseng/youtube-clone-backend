@@ -16,3 +16,4 @@ typings/
 
 config/secret.js
 data/file/
+dockerfile.md
