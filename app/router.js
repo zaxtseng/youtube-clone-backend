@@ -24,4 +24,13 @@ module.exports = app => {
   router.get('/videos/:videoId', app.middleware.auth({ required: false }), controller.video.getVideo);// 获取视频详情
   router.get('/videos', controller.video.getVideos);
   router.get('/users/:userId/videos', controller.video.getUserVideos); // 获取用户发布的视频列表
+  router.get('/users/videos/feed', auth, controller.video.getUserFeedVideos); // 获取用户关注的频道视频列表
+  router.patch('/videos/:videoId', auth, controller.video.updateVideo); // 修改视频
+  router.delete('/videos/:videoId', auth, controller.video.deleteVideo); // 修改视频
+  router.post('/videos/:videoId/comments', auth, controller.video.createComment); // 创建视频评论
+  router.get('/videos/:videoId/comments', controller.video.getVideoComment); // 获取视频评论
+  router.delete('/videos/:videoId/comments/:commentId', auth, controller.video.deleteVideoComment); // 删除视频评论
+  router.post('/videos/:videoId/like', auth, controller.video.likeVideo); // 点赞视频
+  router.post('/videos/:videoId/dislike', auth, controller.video.dislikeVideo); // 点踩视频
+  router.get('/user/videos/liked', auth, controller.video.getUserLikedVideos); // 获取用户喜欢的视频列表
 };

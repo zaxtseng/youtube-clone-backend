@@ -29,7 +29,8 @@ module.exports = appInfo => {
    */
   config.mongoose = {
     client: {
-      url: 'mongodb://127.0.0.1/youtube-clone',
+      // url: 'mongodb://127.0.0.1/youtube-clone',
+      url: 'mongodb://staff:staff@db:27017/youtube-clone?authSource=staff',
       options: { useUnifiedTopology: true },
       plugins: [],
     },
