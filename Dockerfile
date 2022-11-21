@@ -6,10 +6,13 @@ RUN mkdir -p /egg
 WORKDIR /egg
 # 环境变量
 ENV NODE_ENV=production
+# 修改时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+RUN echo 'Asia/Shanghai' > /etc/timezone
 # 将 package.json 复制默认工作目录
 COPY package.json /egg/package.json
 # 安装依赖
-RUN npm config set register https://registry.npm.taobao.org
+RUN npm config set register https://registry.npmmirror.com
 # 只安装dependencies的包
 RUN npm i --production
 # 再copy代码至容器
